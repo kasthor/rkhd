@@ -6,6 +6,7 @@ extern crate libc;
 
 use std::ptr;
 use std::process::Command;
+// use std::string::String;
 
 pub type CFRunLoopRef = *const libc::c_void;
 pub type CGEventType = libc::c_uint;
@@ -65,6 +66,7 @@ extern {
 }
 
 static mut flags:u16 = 0;
+static mut window_slots:[u16; 9] = [0; 9];
 
 extern fn event_tap_callback(_: CGEventTapProxy, event_type: CGEventType, event: CGEventRef, arg: *const libc::c_void) -> CGEventRef {
     let keycode = unsafe{CGEventGetIntegerValueField(event, EventField::KeyboardEventKeycode)} as u16;
@@ -97,6 +99,9 @@ fn find_and_exec_key(key: u16) -> bool{
         } else if flags == FlagType::Hyper as u16 && key == 0x18 {
             run_command("yabai -m space --balance");
             true
+        } else if flags == FlagType::Hyper as u16 && key == 0x11 {
+            run_command("open -a /Applications/Alacritty.app");
+            true
         } else if flags == FlagType::Hyper as u16 && key == 0x03 {
             run_command("yabai -m window --toggle native-fullscreen");
             true
@@ -109,10 +114,22 @@ fn find_and_exec_key(key: u16) -> bool{
         } else if flags == FlagType::Hyper as u16 && key == 0x14 {
             run_command("yabai -m display --focus 3");
             true
+        } else if flags == ( FlagType::Fn as u16 | FlagType::Shift as u16 ) && (key >= 0x12 || key <= 0x1a) {
+            window_slots[(key - 0x12) as usize] = get_output("yabai -m query --windows  | jq 'map(select(.\"focused\" == 1))[0].id'");
+
+            true
+        } else if flags == FlagType::Fn as u16 && ( key >= 0x12 || key <= 0x1a ) {
+            focus_window(window_slots[(key - 0x12) as usize]);
+             
+            true
         } else {
             false
         }
     }
+}
+
+fn focus_window(window: u16) {
+    run_command(&*format!("yabai -m window --focus {}", window))
 }
 
 fn run_command(command: &str) {
@@ -121,6 +138,18 @@ fn run_command(command: &str) {
         .arg(command)
         .spawn()
         .expect("failed to run");
+}
+
+fn get_output(command: &str) -> u16 {
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()
+        .expect("failed to run");
+
+    let output = String::from_utf8(output.stdout).unwrap();
+
+    output.trim().parse::<u16>().unwrap()
 }
 
 fn set_flags(flag: FlagType, event_type: CGEventType) {

@@ -10,7 +10,15 @@
 Hardcoded keyboard shortcuts that use yabai for some operations
 it also throws some debugging information to the console
 
+## Window Slots
+
+It works like radio stations in old car radios, you set a window to a number, then
+you get back to that window using the same number
+
+It works with the numbers on the keyboard, fn + shift + N to set, fn + N to get to that window
+
 ## Shortcuts
+
 ```
 shift + hyper + l : swap window to the righ
 shift + hyper + h : swap window to the left
@@ -18,10 +26,29 @@ shift + hyper + h : swap window to the left
 hyper + 0 : balance window sizes
 hyper + f : toggle full screen
 
-hyper + 1 : focus monitor 1
-hyper + 2 : focus monitor 2
-hyper + 3 : focus monitor 3
+hyper + 1 : focus desktop 1
+hyper + 2 : focus desktop 2
+hyper + 3 : focus desktop 3
+
+shift + fn + 1 : set window to slot 1
+shift + fn + 2 : set window to slot 2
+.
+.
+.
+shift + fn + 9 : set window to slot 9
+
+fn + 1 : focus window 1
+fn + 2 : focus window 2
+.
+.
+.
+fn + 9 : focus window 9
+
 ```
+
+## Disclaimer
+
+The source code at this point is mostly for experimentation
 
 ## Prerequisites
 
