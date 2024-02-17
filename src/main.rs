@@ -1,11 +1,10 @@
 #![allow(non_upper_case_globals, unused_variables, improper_ctypes)]
 extern crate libc;
 
-#[link(name = "CoreFoundation", kind = "framework")]
-#[link(name = "CoreGraphics", kind = "framework")]
-
 use std::ptr;
-use std::process::Command;
+use std::{env, process::Command};
+
+use tracing::debug;
 // use std::string::String;
 
 pub type CFRunLoopRef = *const libc::c_void;
@@ -24,57 +23,68 @@ pub static kCGEventKeyDown: CGEventType = 10;
 pub static kCGEventKeyUp: CGEventType = 11;
 pub static kCGEventFlagsChanged: CGEventType = 12;
 
-pub type CGEventTapCallBack = extern fn(CGEventTapProxy, CGEventType,
-                                        CGEventRef, *const libc::c_void)
-    -> CGEventRef;
+pub type CGEventTapCallBack =
+    extern "C" fn(CGEventTapProxy, CGEventType, CGEventRef, *const libc::c_void) -> CGEventRef;
 
 #[repr(u32)]
 #[non_exhaustive]
 pub enum EventField {
-    KeyboardEventKeycode = 9
+    KeyboardEventKeycode = 9,
 }
 
 pub enum FlagType {
     None = 0,
     Control = 1 << 0,
-    Option  = 1 << 1,
+    Option = 1 << 1,
     Command = 1 << 2,
     Shift = 1 << 3,
     Fn = 1 << 4,
     Hyper = 1 << 5,
 }
 
-extern {
+#[link(name = "CoreFoundation", kind = "framework")]
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
     pub static kCFBooleanTrue: CFBooleanRef;
 
     pub static kCFRunLoopDefaultMode: CFStringRef;
     pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
-    pub fn CGEventTapCreate(tap: u32, place: u32,
-                            options: u32, events: CGEventMask,
-                            callback: CGEventTapCallBack,
-                            user_info: *const libc::c_void ) -> CFMachPortRef;
+    pub fn CGEventTapCreate(
+        tap: u32,
+        place: u32,
+        options: u32,
+        events: CGEventMask,
+        callback: CGEventTapCallBack,
+        user_info: *const libc::c_void,
+    ) -> CFMachPortRef;
 
     pub fn CGEventGetIntegerValueField(event: CGEventRef, field: EventField) -> i64;
-    pub fn CFMachPortCreateRunLoopSource(allocator: *const libc::c_void,
-                                         port: CFMachPortRef,
-                                         order: u64)
-        -> CFRunLoopSourceRef;
-    pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef,
-                              mode: CFStringRef);
+    pub fn CFMachPortCreateRunLoopSource(
+        allocator: *const libc::c_void,
+        port: CFMachPortRef,
+        order: u64,
+    ) -> CFRunLoopSourceRef;
+    pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     pub fn CGEventTapEnable(tap: CFMachPortRef, enable: CFBooleanRef);
     pub fn CFRunLoopRun();
 }
 
-static mut flags:u16 = 0;
-static mut window_slots:[u16; 9] = [0; 9];
+static mut flags: u16 = 0;
+static mut window_slots: [u16; 9] = [0; 9];
 
-extern fn event_tap_callback(_: CGEventTapProxy, event_type: CGEventType, event: CGEventRef, arg: *const libc::c_void) -> CGEventRef {
-    let keycode = unsafe{CGEventGetIntegerValueField(event, EventField::KeyboardEventKeycode)} as u16;
+extern "C" fn event_tap_callback(
+    _: CGEventTapProxy,
+    event_type: CGEventType,
+    event: CGEventRef,
+    arg: *const libc::c_void,
+) -> CGEventRef {
+    let keycode =
+        unsafe { CGEventGetIntegerValueField(event, EventField::KeyboardEventKeycode) } as u16;
 
     let flag = flag_from_key(keycode);
     let mut should_capture_event = false;
 
-    if ! matches!(flag, FlagType::None) {
+    if !matches!(flag, FlagType::None) {
         set_flags(flag, event_type);
         should_capture_event = event_type == kCGEventKeyDown; // If the key is not a flag key but it's detected as a flag then the event should be captured
     } else {
@@ -83,12 +93,21 @@ extern fn event_tap_callback(_: CGEventTapProxy, event_type: CGEventType, event:
         }
     }
 
-    unsafe{ println!("event_type: {:?}, key: {:#X}, flag: {:07b}", event_type, keycode, flags as u16) };
+    unsafe {
+        debug!(
+            "event_type: {:?}, key: {:#X}, flag: {:07b}",
+            event_type, keycode, flags as u16
+        )
+    };
 
-    if should_capture_event { ptr::null() } else { event }
+    if should_capture_event {
+        ptr::null()
+    } else {
+        event
+    }
 }
 
-fn find_and_exec_key(key: u16) -> bool{
+fn find_and_exec_key(key: u16) -> bool {
     unsafe {
         if flags == FlagType::Hyper as u16 | FlagType::Shift as u16 && key == 0x25 {
             run_command("yabai -m window --swap east");
@@ -114,13 +133,16 @@ fn find_and_exec_key(key: u16) -> bool{
         } else if flags == FlagType::Hyper as u16 && key == 0x14 {
             run_command("yabai -m display --focus 3");
             true
-        } else if flags == ( FlagType::Fn as u16 | FlagType::Shift as u16 ) && (key >= 0x12 || key <= 0x1a) {
-            window_slots[(key - 0x12) as usize] = get_output("yabai -m query --windows  | jq 'map(select(.\"focused\" == 1))[0].id'");
+        } else if flags == (FlagType::Fn as u16 | FlagType::Shift as u16)
+            && (key >= 0x12 || key <= 0x1a)
+        {
+            window_slots[(key - 0x12) as usize] =
+                get_output("yabai -m query --windows  | jq 'map(select(.\"focused\" == 1))[0].id'");
 
             true
-        } else if flags == FlagType::Fn as u16 && ( key >= 0x12 || key <= 0x1a ) {
+        } else if flags == FlagType::Fn as u16 && (key >= 0x12 || key <= 0x1a) {
             focus_window(window_slots[(key - 0x12) as usize]);
-             
+
             true
         } else {
             false
@@ -133,6 +155,7 @@ fn focus_window(window: u16) {
 }
 
 fn run_command(command: &str) {
+    dbg!("command: {}", command);
     Command::new("sh")
         .arg("-c")
         .arg(command)
@@ -155,30 +178,37 @@ fn get_output(command: &str) -> u16 {
 fn set_flags(flag: FlagType, event_type: CGEventType) {
     let mask = flag as u16;
 
-    unsafe{
+    unsafe {
         if event_type == kCGEventFlagsChanged {
             flags = flags ^ mask
         } else if event_type == kCGEventKeyDown {
             flags = flags | mask
         } else if event_type == kCGEventKeyUp {
             flags = flags ^ mask
-        } 
+        }
     }
 }
 
-fn flag_from_key(keycode:u16) -> FlagType{
+fn flag_from_key(keycode: u16) -> FlagType {
     match keycode {
         0x3B => FlagType::Control,
         0x3A => FlagType::Option,
-        0x3D => FlagType::Option, // Right
+        0x3D => FlagType::Option,  // Right
         0x36 => FlagType::Command, // Right
         0x37 => FlagType::Command,
         0x38 => FlagType::Shift,
         0x3C => FlagType::Shift, // Right
         0x3F => FlagType::Fn,
         0x4F => FlagType::Hyper,
-        _ => FlagType::None
+        _ => FlagType::None,
     }
+}
+
+fn setup_logging() {
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "warn");
+    }
+    tracing_subscriber::fmt::init();
 }
 
 fn main() {
@@ -186,15 +216,22 @@ fn main() {
     let keyup = 1 << kCGEventKeyUp;
     let modifier = 1 << kCGEventFlagsChanged;
 
+    setup_logging();
+
     unsafe {
-        let tap = CGEventTapCreate(0, 0, 0, modifier | keydown | keyup, event_tap_callback, ptr::null());
+        let tap = CGEventTapCreate(
+            0,
+            0,
+            0,
+            modifier | keydown | keyup,
+            event_tap_callback,
+            ptr::null(),
+        );
 
         if tap.is_null() {
             panic!("Not enough priviledges");
         }
-        let source = CFMachPortCreateRunLoopSource(
-            ptr::null(), tap, 0
-            );
+        let source = CFMachPortCreateRunLoopSource(ptr::null(), tap, 0);
 
         let run_loop = CFRunLoopGetCurrent();
         CFRunLoopAddSource(run_loop, source, kCFRunLoopDefaultMode);
