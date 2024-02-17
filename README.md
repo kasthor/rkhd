@@ -55,6 +55,37 @@ The source code at this point is mostly for experimentation
 - yabai
 - I have Capslock mapped to F18 and that's my hyper key
 
+## Capslock Remapping
+
+It's a common practice to remap your Capslock to another key, I find it frustrating when y actually press Caps Lock by mistake, but in this case it would be a better experience if Capslock is used to manage the desktop
+
+In order to acomplish Capslock remapping to F18 put the XML bellow into `~/Library/LaunchAgents/com.local.KeyRemapping.plist`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.local.KeyRemapping</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/hidutil</string>
+        <string>property</string>
+        <string>--set</string>
+        <string>{"UserKeyMapping":[
+            {
+              "HIDKeyboardModifierMappingSrc": 0x700000039,
+              "HIDKeyboardModifierMappingDst": 0x70000006D
+            }
+        ]}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+```
+
 ## Motivation
 
 I spend too much time in a computer for the reason that I do development mostly all day
